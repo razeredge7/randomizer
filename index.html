@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Randomizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e9eef3;--panel:#fff;--ink:#14213d;--muted:#5b6679;--line:#c9d3de;--accent:#f2b705;--accent-ink:#14213d;--team:#0f766e;--err:#b42318}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1726;--panel:#18223a;--ink:#eef2f8;--muted:#9aa7bd;--line:#2c3a57;--accent:#f2b705;--accent-ink:#14213d;--team:#5eead4;--err:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.5}
+main{max-width:980px;margin:0 auto;padding:32px 20px 64px}
+h1{font-size:clamp(2rem,6vw,3.4rem);font-weight:800;line-height:1.05;margin:0 0 28px;letter-spacing:-.02em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media (max-width:760px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:2px solid var(--ink);border-radius:14px;padding:20px}
+label{display:block;font-weight:600;margin-bottom:6px}
+input,textarea{width:100%;font:inherit;color:var(--ink);background:transparent;border:2px solid var(--line);border-radius:10px;padding:10px 12px}
+textarea{min-height:220px;resize:vertical}
+input:focus,textarea:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-color:var(--ink)}
+.field{margin-bottom:16px}
+.hint{color:var(--muted);font-size:.9rem;margin-top:4px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:10px;padding:12px 20px;border:2px solid var(--ink)}
+.primary{background:var(--accent);color:var(--accent-ink)}
+.primary:hover{filter:brightness(.95)}
+.ghost{background:transparent;color:var(--ink)}
+.ghost:hover{background:var(--line)}
+#msg{color:var(--err);min-height:1.5em;margin:10px 0 0;font-weight:600}
+#results{margin-top:36px}
+#results h2{font-size:1.8rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 16px}
+.teams{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px;margin:16px 0}
+.team{background:var(--panel);border:2px solid var(--ink);border-top:10px solid var(--team);border-radius:12px;padding:14px 16px}
+.team h3{margin:0 0 8px;font-size:1.1rem}
+.team ul{margin:0;padding-left:20px}
+.team li{padding:2px 0}
+.pop{animation:pop .25s ease-out both}
+@keyframes pop{from{transform:scale(.96);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Team Randomizer</h1>
+
+  <div class="grid">
+    <section class="panel">
+      <div class="field">
+        <label for="title">Title</label>
+        <input id="title" type="text" maxlength="80">
+      </div>
+      <div class="field">
+        <label for="size">People per team</label>
+        <input id="size" type="number" min="1" value="3" inputmode="numeric">
+      </div>
+      <div class="row">
+        <button class="primary" id="go" type="button">Randomize teams</button>
+        <button class="ghost" id="clear" type="button">Clear all</button>
+      </div>
+      <p id="msg" role="alert"></p>
+    </section>
+
+    <section class="panel">
+      <label for="names">Student names</label>
+      <textarea id="names" placeholder="Use comma to separate"></textarea>
+      <div class="hint"><span id="count">0</span> students</div>
+    </section>
+  </div>
+
+  <section id="results" hidden aria-live="polite">
+    <h2 id="rTitle"></h2>
+    <p class="sub" id="rSub"></p>
+    <div class="teams" id="teams"></div>
+    <div class="row">
+      <button class="primary" id="again" type="button">Shuffle again</button>
+      <button class="ghost" id="copy" type="button">Copy results</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let current = [];
+
+function getNames() {
+  const seen = new Set(), out = [];
+  $('names').value.split(/[\n,]+/).map(s => s.trim()).filter(Boolean).forEach(n => {
+    const k = n.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); out.push(n); }
+  });
+  return out;
+}
+
+function shuffle(a) {
+  a = a.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const r = new Uint32Array(1);
+    crypto.getRandomValues(r);
+    const j = r[0] % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function build(names, size) {
+  const n = Math.ceil(names.length / size);
+  const base = Math.floor(names.length / n), extra = names.length % n;
+  const shuffled = shuffle(names), teams = [];
+  let p = 0;
+  for (let i = 0; i < n; i++) {
+    const len = base + (i < extra ? 1 : 0);
+    teams.push(shuffled.slice(p, p + len));
+    p += len;
+  }
+  return teams;
+}
+
+function render() {
+  const title = $('title').value.trim();
+  $('rTitle').textContent = title || 'Your teams';
+  $('rSub').textContent = current.length + ' teams, ' + getNames().length + ' students';
+  const box = $('teams');
+  box.innerHTML = '';
+  current.forEach((t, i) => {
+    const d = document.createElement('div');
+    d.className = 'team pop';
+    d.style.animationDelay = (i * 40) + 'ms';
+    const h = document.createElement('h3');
+    h.textContent = 'Team ' + (i + 1) + ' (' + t.length + ')';
+    const ul = document.createElement('ul');
+    t.forEach(name => { const li = document.createElement('li'); li.textContent = name; ul.appendChild(li); });
+    d.append(h, ul);
+    box.appendChild(d);
+  });
+  $('results').hidden = false;
+}
+
+function run() {
+  const msg = $('msg');
+  msg.textContent = '';
+  const names = getNames();
+  const size = parseInt($('size').value, 10);
+  if (names.length < 2) { msg.textContent = 'Add at least 2 student names.'; return; }
+  if (!size || size < 1) { msg.textContent = 'Enter how many people go in each team (1 or more).'; return; }
+  current = build(names, size);
+  render();
+  $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('names').addEventListener('input', () => { $('count').textContent = getNames().length; });
+$('go').addEventListener('click', run);
+$('again').addEventListener('click', run);
+$('clear').addEventListener('click', () => {
+  $('title').value = ''; $('names').value = ''; $('count').textContent = 0;
+  $('msg').textContent = ''; $('results').hidden = true;
+});
+$('copy').addEventListener('click', async () => {
+  const title = $('title').value.trim();
+  const text = (title ? title + '\n\n' : '') + current.map((t, i) => 'Team ' + (i + 1) + ': ' + t.join(', ')).join('\n');
+  try { await navigator.clipboard.writeText(text); $('copy').textContent = 'Copied'; }
+  catch (e) { $('copy').textContent = 'Copy failed'; }
+  setTimeout(() => { $('copy').textContent = 'Copy results'; }, 1500);
+});
+</script>
+</body>
+</html>
